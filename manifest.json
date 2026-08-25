@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "iam4x.codexbar",
+  "name": "CodexBar usage",
+  "version": "0.1.0",
+  "author": "iam4x",
+  "description": "Remaining CodexBar provider usage in the Omarchy bar",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "CodexBar usage",
+    "description": "Remaining provider usage and reset countdown",
+    "category": "AI",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
