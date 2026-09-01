@@ -10,9 +10,21 @@ Item {
   property real fontSize: 12
   readonly property string iconBase: root.providerUsage ? String(root.providerUsage.icon || "") : ""
   readonly property bool useLightIcon: root.foreground.r + root.foreground.g + root.foreground.b >= 1.5
+  readonly property var iconAssetMap: ({
+    "grok-bot": {
+      dark: "assets/icons/grok-bot.png",
+      light: "assets/icons/grok-bot.png"
+    }
+  })
+  readonly property string iconAssetPath: {
+    var assets = root.iconAssetMap[root.iconBase]
+    return assets ? assets[root.useLightIcon ? "light" : "dark"] || "" : ""
+  }
   readonly property url iconSource: root.iconBase === ""
     ? ""
-    : Qt.resolvedUrl("assets/icons/" + root.iconBase + (root.useLightIcon ? "-light" : "") + ".svg")
+    : root.iconAssetPath !== ""
+      ? Qt.resolvedUrl(root.iconAssetPath)
+      : Qt.resolvedUrl("assets/icons/" + root.iconBase + (root.useLightIcon ? "-light" : "") + ".svg")
   readonly property real iconSize: Math.max(1, root.fontSize)
 
   implicitWidth: vertical ? verticalContent.implicitWidth : horizontalContent.implicitWidth

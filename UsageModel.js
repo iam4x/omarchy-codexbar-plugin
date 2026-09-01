@@ -7,6 +7,7 @@ var ICONS = {
   "azure-openai": "azureopenai",
   chatgpt: "openai",
   grok: "grok",
+  "grok-bot": "grok-bot",
   claude: "claude",
   anthropic: "claude",
   gemini: "gemini",
@@ -46,6 +47,12 @@ var ICONS = {
   groqcloud: "groq",
   poe: "poe",
   zai: "zai"
+}
+
+var DERIVED_WINDOW_PROVIDERS = {
+  cursor: {
+    "cursor-grok-bot": "grok-bot"
+  }
 }
 
 var FALLBACK_ICON = ""
@@ -149,6 +156,32 @@ function collectWindows(rawUsage, nowMs) {
   return windows
 }
 
+function derivedProviderForWindow(provider, window) {
+  if (!window || window.kind !== "extra") return ""
+  var providerWindows = DERIVED_WINDOW_PROVIDERS[provider.toLowerCase()]
+  return providerWindows ? providerWindows[window.id] || "" : ""
+}
+
+function splitWindows(provider, windows) {
+  var ordinaryWindows = []
+  var derivedWindows = {}
+  for (var i = 0; i < windows.length; i++) {
+    var window = windows[i]
+    var derivedProvider = derivedProviderForWindow(provider, window)
+    if (!derivedProvider) {
+      ordinaryWindows.push(window)
+      continue
+    }
+
+    if (!derivedWindows[derivedProvider]) derivedWindows[derivedProvider] = []
+    derivedWindows[derivedProvider].push(window)
+  }
+  return {
+    ordinary: ordinaryWindows,
+    derived: derivedWindows
+  }
+}
+
 function selectWindow(windows) {
   if (!Array.isArray(windows) || windows.length === 0) return null
   var selected = windows[0]
@@ -205,20 +238,30 @@ function errorMessage(value) {
   return String(value || "").trim()
 }
 
-function normalizeProvider(record, nowMs) {
+function normalizeProviderRows(record, nowMs) {
   if (!isObject(record) || typeof record.provider !== "string" || !record.provider.trim()) return null
 
   var provider = record.provider.trim()
   var source = typeof record.source === "string" ? record.source : ""
   var icon = providerIcon(provider)
   if (record.error !== undefined && record.error !== null && errorMessage(record.error)) {
-    return errorRow(provider, source, icon, errorMessage(record.error))
+    return [errorRow(provider, source, icon, errorMessage(record.error))]
   }
 
   var windows = collectWindows(record.usage, nowMs)
-  if (windows.length === 0) return errorRow(provider, source, icon, "No usable usage window was returned.")
+  if (windows.length === 0) return [errorRow(provider, source, icon, "No usable usage window was returned.")]
 
-  return usageRow(provider, source, icon, windows)
+  var split = splitWindows(provider, windows)
+  var rows = []
+  if (split.ordinary.length > 0) rows.push(usageRow(provider, source, icon, split.ordinary))
+
+  var derivedProviders = Object.keys(split.derived)
+  for (var i = 0; i < derivedProviders.length; i++) {
+    var derivedProvider = derivedProviders[i]
+    rows.push(usageRow(derivedProvider, source, providerIcon(derivedProvider), split.derived[derivedProvider]))
+  }
+
+  return rows
 }
 
 function mergeProviderRows(existing, incoming) {
@@ -243,13 +286,16 @@ function parsePayload(rawJson, nowMs) {
   var providers = []
   var indexes = {}
   for (var i = 0; i < payload.length; i++) {
-    var row = normalizeProvider(payload[i], nowMs)
-    if (!row) return { ok: false, error: "CodexBar returned an invalid provider record." }
-    if (indexes[row.provider] !== undefined) {
-      providers[indexes[row.provider]] = mergeProviderRows(providers[indexes[row.provider]], row)
-    } else {
-      indexes[row.provider] = providers.length
-      providers.push(row)
+    var rows = normalizeProviderRows(payload[i], nowMs)
+    if (!rows) return { ok: false, error: "CodexBar returned an invalid provider record." }
+    for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      var row = rows[rowIndex]
+      if (indexes[row.provider] !== undefined) {
+        providers[indexes[row.provider]] = mergeProviderRows(providers[indexes[row.provider]], row)
+      } else {
+        indexes[row.provider] = providers.length
+        providers.push(row)
+      }
     }
   }
 

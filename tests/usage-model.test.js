@@ -13,6 +13,14 @@ function parse(json) {
   return result
 }
 
+function grokBotExtra(usedPercent, resetsAt, title) {
+  return {
+    id: 'cursor-grok-bot',
+    title: title || 'Grok Bot',
+    window: { usedPercent, resetsAt }
+  }
+}
+
 {
   const result = parse(record('codex', {
     secondary: { usedPercent: 65, resetsAt: '2026-08-31T00:00:00Z' }
@@ -60,6 +68,127 @@ function parse(json) {
 }
 
 {
+  const result = parse(record('cursor', {
+    primary: { usedPercent: 10, resetsAt: '2026-08-26T00:00:00Z' },
+    secondary: { usedPercent: 20, resetsAt: '2026-08-27T00:00:00Z' },
+    tertiary: { usedPercent: 30, resetsAt: '2026-08-28T00:00:00Z' },
+    extraRateWindows: [
+      {
+        id: 'cursor-generic',
+        title: 'Cursor generic',
+        window: { usedPercent: 80, resetsAt: '2026-08-29T00:00:00Z' }
+      },
+      grokBotExtra(95, '2026-08-30T00:00:00Z', 'Grok Bot allowance')
+    ]
+  }))
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor', 'grok-bot'])
+
+  const cursor = result.providers[0]
+  assert.deepEqual(cursor.windows.map(window => window.id), [
+    'primary',
+    'secondary',
+    'tertiary',
+    'cursor-generic'
+  ])
+  assert.equal(cursor.selectedWindow.id, 'cursor-generic')
+  assert.equal(cursor.remainingPercent, 20)
+
+  const grokBot = result.providers[1]
+  assert.equal(grokBot.icon, 'grok-bot')
+  assert.equal(grokBot.source, 'cursor-source')
+  assert.equal(grokBot.windows.length, 1)
+  assert.equal(grokBot.selectedWindow.kind, 'extra')
+  assert.equal(grokBot.selectedWindow.id, 'cursor-grok-bot')
+  assert.equal(grokBot.selectedWindow.title, 'Grok Bot allowance')
+  assert.equal(grokBot.selectedWindow.usedPercent, 95)
+  assert.equal(grokBot.selectedWindow.remainingPercent, 5)
+  assert.equal(grokBot.selectedWindow.resetsAtMs, Date.parse('2026-08-30T00:00:00Z'))
+}
+
+{
+  const result = parse(record('cursor', {
+    primary: { usedPercent: 25, resetsAt: '2026-08-26T00:00:00Z' }
+  }))
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor'])
+  assert.equal(result.providers[0].windows.some(window => window.id === 'cursor-grok-bot'), false)
+}
+
+{
+  const result = parse(record('cursor', {
+    primary: { usedPercent: 20, resetsAt: '2026-08-26T00:00:00Z' },
+    extraRateWindows: [
+      {
+        id: 'cursor-grok-bot-preview',
+        title: 'Grok Bot preview',
+        window: { usedPercent: 90, resetsAt: '2026-08-27T00:00:00Z' }
+      }
+    ]
+  }))
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor'])
+  assert.equal(result.providers[0].selectedWindow.id, 'cursor-grok-bot-preview')
+  assert.equal(result.providers[0].selectedWindow.kind, 'extra')
+}
+
+{
+  const result = parse(record('cursor', {
+    primary: { usedPercent: 25, resetsAt: '2026-08-26T00:00:00Z' },
+    extraRateWindows: [
+      {
+        id: 'cursor-grok-bot',
+        title: 'Malformed Grok Bot',
+        window: { usedPercent: '95', resetsAt: '2026-08-30T00:00:00Z' }
+      }
+    ]
+  }))
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor'])
+  assert.deepEqual(result.providers[0].windows.map(window => window.id), ['primary'])
+}
+
+{
+  const result = parse(record('cursor', {
+    extraRateWindows: [grokBotExtra(70, '2026-08-30T00:00:00Z')]
+  }))
+  assert.deepEqual(result.providers.map(row => row.provider), ['grok-bot'])
+  assert.equal(result.providers[0].selectedWindow.id, 'cursor-grok-bot')
+  assert.equal(result.providers[0].icon, 'grok-bot')
+}
+
+{
+  const result = parse(JSON.stringify([
+    {
+      provider: 'cursor',
+      source: 'account-1',
+      usage: {
+        primary: { usedPercent: 20, resetsAt: '2026-08-26T00:00:00Z' },
+        extraRateWindows: [grokBotExtra(60, '2026-08-28T00:00:00Z')]
+      }
+    },
+    {
+      provider: 'cursor',
+      source: 'account-2',
+      usage: {
+        secondary: { usedPercent: 90, resetsAt: '2026-08-27T00:00:00Z' },
+        extraRateWindows: [grokBotExtra(95, '2026-08-29T00:00:00Z')]
+      }
+    }
+  ]))
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor', 'grok-bot'])
+  assert.equal(result.providers[0].windows.length, 2)
+  assert.equal(result.providers[1].windows.length, 2)
+  assert.equal(result.providers[1].source, 'account-1')
+  assert.equal(result.providers[1].selectedWindow.usedPercent, 95)
+}
+
+{
+  const result = parse(record('codex', {
+    primary: { usedPercent: 25, resetsAt: '2026-08-26T00:00:00Z' },
+    extraRateWindows: [grokBotExtra(95, '2026-08-30T00:00:00Z')]
+  }))
+  assert.deepEqual(result.providers.map(row => row.provider), ['codex'])
+  assert.equal(result.providers[0].selectedWindow.id, 'cursor-grok-bot')
+}
+
+{
   const result = UsageModel.parsePayload(JSON.stringify([{
     provider: 'grok',
     source: 'grok-cli-proxy',
@@ -102,6 +231,7 @@ function parse(json) {
   assert.equal(UsageModel.providerIcon('codex'), 'codex')
   assert.equal(UsageModel.providerIcon('openai'), 'openai')
   assert.equal(UsageModel.providerIcon('grok'), 'grok')
+  assert.equal(UsageModel.providerIcon('grok-bot'), 'grok-bot')
   assert.equal(UsageModel.providerIcon('new-provider'), '')
   assert.equal(UsageModel.providerIcon(''), '')
 }
