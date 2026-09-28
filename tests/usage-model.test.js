@@ -247,4 +247,103 @@ function grokBotExtra(usedPercent, resetsAt, title) {
   assert.equal(result.providers[0].remainingPercent, 10)
 }
 
+{
+  const result = parse(JSON.stringify([{
+    provider: 'codex',
+    source: 'oauth',
+    rateWindowLabels: { secondary: 'Weekly' },
+    pace: {
+      primary: { deltaPercent: 19, expectedUsedPercent: 15 },
+      secondary: { deltaPercent: 1, expectedUsedPercent: 120 },
+      tertiary: { deltaPercent: -3 },
+      spark: { deltaPercent: -13, expectedUsedPercent: 95 }
+    },
+    credits: { remaining: 24.5, creditsAvailable: true, balanceReadSucceeded: true },
+    usage: {
+      loginMethod: 'plus',
+      accountEmail: 'me@example.com',
+      primary: { usedPercent: 34, windowMinutes: 300, resetsAt: '2026-08-25T04:14:00Z' },
+      secondary: { usedPercent: 68, windowMinutes: 10080, resetsAt: '2026-08-27T05:00:00Z' },
+      tertiary: { usedPercent: 5, windowMinutes: 77, resetsAt: '2026-08-27T05:00:00Z' },
+      extraRateWindows: [
+        { id: 'spark', title: 'Spark', window: { usedPercent: 82, resetsAt: '2026-08-25T00:30:00Z' } }
+      ],
+      providerCost: { period: 'Extra usage', currencyCode: 'Credits', limit: 50, used: 12.25 },
+      codexResetCredits: { availableCount: 1 },
+      details: [
+        { title: 'Usage breakdown', rows: [{ label: 'Build', value: '9%' }, { label: 7 }] },
+        { title: 'Empty', rows: [] }
+      ]
+    }
+  }]))
+  const row = result.providers[0]
+  assert.deepEqual(row.windows.map(window => window.title), ['Session', 'Weekly', 'Tertiary', 'Spark'])
+  assert.deepEqual(row.windows.map(window => window.windowMinutes), [300, 10080, 77, null])
+
+  assert.deepEqual(row.windows.map(window => window.pace), [
+    { expectedUsedPercent: 15 },
+    { expectedUsedPercent: 100 },
+    null,
+    { expectedUsedPercent: 95 }
+  ])
+
+  assert.equal(row.info.displayName, 'Codex')
+  assert.deepEqual(row.info.sections, [
+    {
+      title: 'Credits',
+      rows: [
+        { label: 'Credits balance', value: '24.50' },
+        { label: 'Extra usage', value: '12.25 / 50 Credits' },
+        { label: 'Limit resets available', value: '1' }
+      ]
+    },
+    { title: 'Usage breakdown', rows: [{ label: 'Build', value: '9%' }] }
+  ])
+}
+
+{
+  const result = parse(JSON.stringify([{
+    provider: 'codex',
+    credits: { remaining: 0, creditsAvailable: false },
+    usage: {
+      primary: { usedPercent: 10, resetsAt: '2026-08-26T00:00:00Z' },
+      providerCost: { period: 'Extra usage', limit: 0, used: 0 }
+    }
+  }]))
+  assert.deepEqual(result.providers[0].info.sections, [])
+  assert.equal(result.providers[0].windows[0].title, 'Primary')
+}
+
+{
+  const result = parse(JSON.stringify([{
+    provider: 'cursor',
+    usage: {
+      loginMethod: 'Cursor Ultra',
+      primary: { usedPercent: 10, resetsAt: '2026-08-26T00:00:00Z' },
+      extraRateWindows: [grokBotExtra(20, '2026-08-30T00:00:00Z')]
+    }
+  }]))
+  assert.equal(result.providers[0].info.displayName, 'Cursor')
+  assert.equal(result.providers[1].info.displayName, 'Grok Bot')
+  assert.deepEqual(result.providers[1].info.sections, [])
+}
+
+{
+  const result = UsageModel.parsePayload(JSON.stringify([{
+    provider: 'claude',
+    error: 'Login expired',
+    usage: { loginMethod: 'max' }
+  }]), now)
+  assert.equal(result.providers[0].info.displayName, 'Claude')
+}
+
+{
+  assert.equal(UsageModel.displayName('zai'), 'Z.ai')
+  assert.equal(UsageModel.displayName('new-provider_name'), 'New Provider Name')
+  assert.equal(UsageModel.formatResetIn(now - 1000, now), 'Resets now')
+  assert.equal(UsageModel.formatResetIn(now + 59 * 60000, now), 'Resets in 59m')
+  assert.equal(UsageModel.formatResetIn(now + (4 * 60 + 14) * 60000, now), 'Resets in 4h 14m')
+  assert.equal(UsageModel.formatResetIn(now + (2 * 24 + 5) * 3600000 + 30 * 60000, now), 'Resets in 2d 5h')
+}
+
 console.log('usage-model tests passed')

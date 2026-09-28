@@ -104,10 +104,27 @@ omarchy plugin validate .
   with the least remaining capacity.
 - Provider errors remain visible with `--` values.
 - Providers without a matching icon use a `?` fallback.
-- The widget refreshes on startup and every five minutes. A left click starts
-  a manual refresh. Clicks during an active refresh are ignored.
+- The widget refreshes on startup and every five minutes. A middle click
+  starts a manual refresh. Clicks during an active refresh are ignored.
 - Visible provider content pulses gently during a refresh.
 - There is no hover tooltip.
+
+## Details panel
+
+A left click opens a panel with one column per provider. Each column shows:
+
+- The provider logo and name.
+- Every rate window with its remaining percentage, a meter that drains as
+  usage grows, and the time until reset. When CodexBar reports pace, a tick
+  marks where the meter should be.
+- Credits, spend, and any usage breakdown CodexBar returns.
+
+The footer shows the last update time and a refresh button. Press `r` to
+refresh or `Esc` to close. The panel also answers IPC:
+
+```bash
+qs ipc -p "$OMARCHY_PATH/shell" call iam4x.codexbar toggle
+```
 
 The widget hides when CodexBar returns no enabled provider records.
 
