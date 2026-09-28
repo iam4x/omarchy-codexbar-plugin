@@ -9,22 +9,6 @@ Item {
   property string fontFamily: ""
   property real fontSize: 12
   readonly property string iconBase: root.providerUsage ? String(root.providerUsage.icon || "") : ""
-  readonly property bool useLightIcon: root.foreground.r + root.foreground.g + root.foreground.b >= 1.5
-  readonly property var iconAssetMap: ({
-    "grok-bot": {
-      dark: "assets/icons/grok-bot.png",
-      light: "assets/icons/grok-bot.png"
-    }
-  })
-  readonly property string iconAssetPath: {
-    var assets = root.iconAssetMap[root.iconBase]
-    return assets ? assets[root.useLightIcon ? "light" : "dark"] || "" : ""
-  }
-  readonly property url iconSource: root.iconBase === ""
-    ? ""
-    : root.iconAssetPath !== ""
-      ? Qt.resolvedUrl(root.iconAssetPath)
-      : Qt.resolvedUrl("assets/icons/" + root.iconBase + (root.useLightIcon ? "-light" : "") + ".svg")
   readonly property real iconSize: Math.max(1, root.fontSize)
 
   implicitWidth: vertical ? verticalContent.implicitWidth : horizontalContent.implicitWidth
@@ -35,30 +19,12 @@ Item {
     visible: !root.vertical
     spacing: 4
 
-    Item {
-      width: root.iconSize
-      height: root.iconSize
+    ProviderIcon {
       anchors.verticalCenter: parent.verticalCenter
-
-      Image {
-        anchors.fill: parent
-        visible: root.iconSource !== ""
-        source: root.iconSource
-        sourceSize: Qt.size(root.iconSize * 2, root.iconSize * 2)
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-      }
-
-      Text {
-        anchors.fill: parent
-        visible: root.iconSource === ""
-        text: "?"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: root.fontSize
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-      }
+      icon: root.iconBase
+      size: root.iconSize
+      foreground: root.foreground
+      fontFamily: root.fontFamily
     }
 
     Text {
@@ -81,30 +47,12 @@ Item {
     visible: root.vertical
     spacing: 1
 
-    Item {
-      width: root.iconSize
-      height: root.iconSize
+    ProviderIcon {
       anchors.horizontalCenter: parent.horizontalCenter
-
-      Image {
-        anchors.fill: parent
-        visible: root.iconSource !== ""
-        source: root.iconSource
-        sourceSize: Qt.size(root.iconSize * 2, root.iconSize * 2)
-        fillMode: Image.PreserveAspectFit
-        smooth: true
-      }
-
-      Text {
-        anchors.fill: parent
-        visible: root.iconSource === ""
-        text: "?"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: root.fontSize
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-      }
+      icon: root.iconBase
+      size: root.iconSize
+      foreground: root.foreground
+      fontFamily: root.fontFamily
     }
 
     Text {

@@ -1,3 +1,4 @@
+var MINUTE_MS = 60000
 var HOUR_MS = 3600000
 
 var ICONS = {
@@ -57,6 +58,35 @@ var DERIVED_WINDOW_PROVIDERS = {
 
 var FALLBACK_ICON = ""
 
+var DISPLAY_NAMES = {
+  codex: "Codex",
+  openai: "OpenAI",
+  azureopenai: "Azure OpenAI",
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  anthropic: "Claude",
+  copilot: "Copilot",
+  opencode: "OpenCode",
+  opencodego: "OpenCode Go",
+  "grok-bot": "Grok Bot",
+  kimik2: "Kimi K2",
+  minimax: "MiniMax",
+  vertexai: "Vertex AI",
+  openrouter: "OpenRouter",
+  elevenlabs: "ElevenLabs",
+  deepseek: "DeepSeek",
+  stepfun: "StepFun",
+  groqcloud: "GroqCloud",
+  zai: "Z.ai"
+}
+
+var WINDOW_TITLES = {
+  300: "Session",
+  1440: "Daily",
+  10080: "Weekly",
+  43200: "Monthly"
+}
+
 function emptySnapshot(message) {
   return {
     state: "unavailable",
@@ -104,7 +134,35 @@ function formatResetDuration(duration) {
   return duration.days + "d " + duration.hours + "h"
 }
 
-function normalizeWindow(rawWindow, kind, id, title, nowMs) {
+function formatResetIn(resetsAtMs, nowMs) {
+  var totalMinutes = Math.floor(Math.max(0, resetsAtMs - nowMs) / MINUTE_MS)
+  if (totalMinutes <= 0) return "Resets now"
+  var days = Math.floor(totalMinutes / 1440)
+  var hours = Math.floor((totalMinutes % 1440) / 60)
+  var minutes = totalMinutes % 60
+  if (days > 0) return "Resets in " + days + "d " + hours + "h"
+  if (hours > 0) return "Resets in " + hours + "h " + minutes + "m"
+  return "Resets in " + minutes + "m"
+}
+
+function displayName(provider) {
+  var key = String(provider || "").toLowerCase()
+  if (DISPLAY_NAMES[key]) return DISPLAY_NAMES[key]
+  return key.split(/[-_\s]+/).filter(function(part) { return part !== "" }).map(function(part) {
+    return part.charAt(0).toUpperCase() + part.slice(1)
+  }).join(" ")
+}
+
+function windowTitle(windowMinutes, fallback) {
+  return WINDOW_TITLES[windowMinutes] || fallback
+}
+
+function normalizePace(rawPace) {
+  if (!isObject(rawPace) || typeof rawPace.expectedUsedPercent !== "number" || !isFinite(rawPace.expectedUsedPercent)) return null
+  return { expectedUsedPercent: clamp(rawPace.expectedUsedPercent, 0, 100) }
+}
+
+function normalizeWindow(rawWindow, kind, id, title, nowMs, rawPace) {
   if (!isObject(rawWindow)) return null
   if (typeof rawWindow.usedPercent !== "number" || !isFinite(rawWindow.usedPercent)) return null
   if (typeof rawWindow.resetsAt !== "string") return null
@@ -115,10 +173,15 @@ function normalizeWindow(rawWindow, kind, id, title, nowMs) {
   var usedPercent = rawWindow.usedPercent
   var remainingPercent = clamp(100 - usedPercent, 0, 100)
   var duration = resetDuration(resetsAtMs, nowMs)
+  var windowMinutes = typeof rawWindow.windowMinutes === "number" && isFinite(rawWindow.windowMinutes)
+    ? rawWindow.windowMinutes
+    : null
   return {
     kind: kind,
     id: id,
     title: title,
+    windowMinutes: windowMinutes,
+    pace: normalizePace(rawPace),
     usedPercent: usedPercent,
     remainingPercent: remainingPercent,
     resetsAtMs: resetsAtMs,
@@ -127,8 +190,11 @@ function normalizeWindow(rawWindow, kind, id, title, nowMs) {
   }
 }
 
-function collectWindows(rawUsage, nowMs) {
+function collectWindows(rawUsage, nowMs, rawLabels, rawPace) {
   if (!isObject(rawUsage)) return []
+
+  var labels = isObject(rawLabels) ? rawLabels : {}
+  var pace = isObject(rawPace) ? rawPace : {}
 
   var windows = []
   var fixed = [
@@ -139,7 +205,11 @@ function collectWindows(rawUsage, nowMs) {
 
   for (var i = 0; i < fixed.length; i++) {
     var definition = fixed[i]
-    var fixedWindow = normalizeWindow(rawUsage[definition.key], definition.key, definition.key, definition.title, nowMs)
+    var rawWindow = rawUsage[definition.key]
+    var title = typeof labels[definition.key] === "string" && labels[definition.key]
+      ? labels[definition.key]
+      : windowTitle(isObject(rawWindow) ? rawWindow.windowMinutes : null, definition.title)
+    var fixedWindow = normalizeWindow(rawWindow, definition.key, definition.key, title, nowMs, pace[definition.key])
     if (fixedWindow) windows.push(fixedWindow)
   }
 
@@ -149,7 +219,7 @@ function collectWindows(rawUsage, nowMs) {
     if (!isObject(extra) || !isObject(extra.window)) continue
     var extraId = typeof extra.id === "string" && extra.id ? extra.id : "extra-" + j
     var extraTitle = typeof extra.title === "string" && extra.title ? extra.title : extraId
-    var extraWindow = normalizeWindow(extra.window, "extra", extraId, extraTitle, nowMs)
+    var extraWindow = normalizeWindow(extra.window, "extra", extraId, extraTitle, nowMs, pace[extraId])
     if (extraWindow) windows.push(extraWindow)
   }
 
@@ -195,7 +265,7 @@ function selectWindow(windows) {
   return selected
 }
 
-function usageRow(provider, source, icon, windows) {
+function usageRow(provider, source, icon, windows, info) {
   var selectedWindow = selectWindow(windows)
   var remainingPercent = selectedWindow.remainingPercent
   var remainingLabel = String(Math.round(remainingPercent)) + "%"
@@ -211,11 +281,12 @@ function usageRow(provider, source, icon, windows) {
     remainingLabel: remainingLabel,
     resetDays: selectedWindow.resetDays,
     resetLabel: resetLabel,
+    info: info || providerInfo(provider, null, null),
     error: null
   }
 }
 
-function errorRow(provider, source, icon, message) {
+function errorRow(provider, source, icon, message, info) {
   var text = message || "No usable usage window was returned."
   return {
     kind: "error",
@@ -228,7 +299,70 @@ function errorRow(provider, source, icon, message) {
     remainingLabel: "--%",
     resetDays: null,
     resetLabel: "--",
+    info: info || providerInfo(provider, null, null),
     error: text
+  }
+}
+
+function formatAmount(value) {
+  if (Math.round(value) === value) return String(value)
+  return value.toFixed(2)
+}
+
+function finiteNumber(value) {
+  return typeof value === "number" && isFinite(value)
+}
+
+function creditRows(record, usage) {
+  var rows = []
+  var credits = record.credits
+  if (isObject(credits) && credits.balanceReadSucceeded !== false && finiteNumber(credits.remaining) &&
+      (credits.creditsAvailable === true || credits.remaining > 0)) {
+    rows.push({ label: "Credits balance", value: formatAmount(credits.remaining) })
+  }
+
+  var cost = usage.providerCost
+  if (isObject(cost) && finiteNumber(cost.used) && (cost.used > 0 || (finiteNumber(cost.limit) && cost.limit > 0))) {
+    var currency = typeof cost.currencyCode === "string" ? cost.currencyCode : ""
+    var value = formatAmount(cost.used)
+    if (finiteNumber(cost.limit) && cost.limit > 0) value += " / " + formatAmount(cost.limit)
+    if (currency) value += " " + currency
+    rows.push({ label: typeof cost.period === "string" && cost.period ? cost.period : "Spend", value: value })
+  }
+
+  var resets = usage.codexResetCredits
+  if (isObject(resets) && finiteNumber(resets.availableCount) && resets.availableCount > 0) {
+    rows.push({ label: "Limit resets available", value: String(resets.availableCount) })
+  }
+  return rows
+}
+
+function detailSections(usage) {
+  var sections = []
+  var details = Array.isArray(usage.details) ? usage.details : []
+  for (var i = 0; i < details.length; i++) {
+    var detail = details[i]
+    if (!isObject(detail) || !Array.isArray(detail.rows)) continue
+    var rows = []
+    for (var j = 0; j < detail.rows.length; j++) {
+      var row = detail.rows[j]
+      if (!isObject(row) || typeof row.label !== "string" || row.value === undefined || row.value === null) continue
+      rows.push({ label: row.label, value: String(row.value) })
+    }
+    if (rows.length > 0) sections.push({ title: typeof detail.title === "string" && detail.title ? detail.title : "Details", rows: rows })
+  }
+  return sections
+}
+
+function providerInfo(provider, record, usage) {
+  var rawRecord = isObject(record) ? record : {}
+  var rawUsage = isObject(usage) ? usage : {}
+  var sections = []
+  var credits = creditRows(rawRecord, rawUsage)
+  if (credits.length > 0) sections.push({ title: "Credits", rows: credits })
+  return {
+    displayName: displayName(provider),
+    sections: sections.concat(detailSections(rawUsage))
   }
 }
 
@@ -244,16 +378,17 @@ function normalizeProviderRows(record, nowMs) {
   var provider = record.provider.trim()
   var source = typeof record.source === "string" ? record.source : ""
   var icon = providerIcon(provider)
+  var info = providerInfo(provider, record, record.usage)
   if (record.error !== undefined && record.error !== null && errorMessage(record.error)) {
-    return [errorRow(provider, source, icon, errorMessage(record.error))]
+    return [errorRow(provider, source, icon, errorMessage(record.error), info)]
   }
 
-  var windows = collectWindows(record.usage, nowMs)
-  if (windows.length === 0) return [errorRow(provider, source, icon, "No usable usage window was returned.")]
+  var windows = collectWindows(record.usage, nowMs, record.rateWindowLabels, record.pace)
+  if (windows.length === 0) return [errorRow(provider, source, icon, "No usable usage window was returned.", info)]
 
   var split = splitWindows(provider, windows)
   var rows = []
-  if (split.ordinary.length > 0) rows.push(usageRow(provider, source, icon, split.ordinary))
+  if (split.ordinary.length > 0) rows.push(usageRow(provider, source, icon, split.ordinary, info))
 
   var derivedProviders = Object.keys(split.derived)
   for (var i = 0; i < derivedProviders.length; i++) {
@@ -266,7 +401,7 @@ function normalizeProviderRows(record, nowMs) {
 
 function mergeProviderRows(existing, incoming) {
   if (existing.kind === "usage" && incoming.kind === "usage") {
-    return usageRow(existing.provider, existing.source || incoming.source, existing.icon, existing.windows.concat(incoming.windows))
+    return usageRow(existing.provider, existing.source || incoming.source, existing.icon, existing.windows.concat(incoming.windows), existing.info)
   }
   if (existing.kind === "usage") return existing
   if (incoming.kind === "usage") return incoming
@@ -339,6 +474,8 @@ var api = {
   emptySnapshot: emptySnapshot,
   loadingSnapshot: loadingSnapshot,
   providerIcon: providerIcon,
+  displayName: displayName,
+  formatResetIn: formatResetIn,
   collectWindows: collectWindows,
   selectWindow: selectWindow,
   parsePayload: parsePayload,
