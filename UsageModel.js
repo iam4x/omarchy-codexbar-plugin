@@ -81,10 +81,19 @@ var DISPLAY_NAMES = {
 }
 
 var WINDOW_TITLES = {
-  300: "Session",
+  300: "5h",
   1440: "Daily",
   10080: "Weekly",
   43200: "Monthly"
+}
+
+// CodexBar names the 300-minute Claude/Codex window "Session". That is the
+// rolling 5-hour limit; keep a provider label when it is more specific.
+var GENERIC_WINDOW_LABELS = {
+  Session: true,
+  Primary: true,
+  Secondary: true,
+  Tertiary: true
 }
 
 function emptySnapshot(message) {
@@ -153,7 +162,9 @@ function displayName(provider) {
   }).join(" ")
 }
 
-function windowTitle(windowMinutes, fallback) {
+function windowTitle(windowMinutes, label, fallback) {
+  if (windowMinutes === 300 && (!label || GENERIC_WINDOW_LABELS[label])) return "5h"
+  if (label) return label
   return WINDOW_TITLES[windowMinutes] || fallback
 }
 
@@ -206,9 +217,11 @@ function collectWindows(rawUsage, nowMs, rawLabels, rawPace) {
   for (var i = 0; i < fixed.length; i++) {
     var definition = fixed[i]
     var rawWindow = rawUsage[definition.key]
-    var title = typeof labels[definition.key] === "string" && labels[definition.key]
-      ? labels[definition.key]
-      : windowTitle(isObject(rawWindow) ? rawWindow.windowMinutes : null, definition.title)
+    var windowMinutes = isObject(rawWindow) && typeof rawWindow.windowMinutes === "number" && isFinite(rawWindow.windowMinutes)
+      ? rawWindow.windowMinutes
+      : null
+    var label = typeof labels[definition.key] === "string" ? labels[definition.key] : ""
+    var title = windowTitle(windowMinutes, label, definition.title)
     var fixedWindow = normalizeWindow(rawWindow, definition.key, definition.key, title, nowMs, pace[definition.key])
     if (fixedWindow) windows.push(fixedWindow)
   }

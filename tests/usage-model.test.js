@@ -277,7 +277,7 @@ function grokBotExtra(usedPercent, resetsAt, title) {
     }
   }]))
   const row = result.providers[0]
-  assert.deepEqual(row.windows.map(window => window.title), ['Session', 'Weekly', 'Tertiary', 'Spark'])
+  assert.deepEqual(row.windows.map(window => window.title), ['5h', 'Weekly', 'Tertiary', 'Spark'])
   assert.deepEqual(row.windows.map(window => window.windowMinutes), [300, 10080, 77, null])
 
   assert.deepEqual(row.windows.map(window => window.pace), [
@@ -335,6 +335,35 @@ function grokBotExtra(usedPercent, resetsAt, title) {
     usage: { loginMethod: 'max' }
   }]), now)
   assert.equal(result.providers[0].info.displayName, 'Claude')
+}
+
+{
+  const result = parse(JSON.stringify([{
+    provider: 'claude',
+    rateWindowLabels: { primary: 'Session', secondary: 'Weekly' },
+    usage: {
+      primary: { usedPercent: 2, windowMinutes: 300, resetsAt: '2026-08-25T05:00:00Z' },
+      secondary: { usedPercent: 18, windowMinutes: 10080, resetsAt: '2026-08-31T00:00:00Z' },
+      extraRateWindows: [{
+        id: 'claude-weekly-scoped-fable',
+        title: 'Fable only',
+        window: { usedPercent: 10, windowMinutes: 10080, resetsAt: '2026-08-31T00:00:00Z' }
+      }]
+    }
+  }]))
+  assert.deepEqual(result.providers[0].windows.map(window => window.title), ['5h', 'Weekly', 'Fable only'])
+  assert.equal(result.providers[0].windows[0].windowMinutes, 300)
+}
+
+{
+  const result = parse(JSON.stringify([{
+    provider: 'claude',
+    rateWindowLabels: { primary: 'Burst' },
+    usage: {
+      primary: { usedPercent: 2, windowMinutes: 300, resetsAt: '2026-08-25T05:00:00Z' }
+    }
+  }]))
+  assert.equal(result.providers[0].windows[0].title, 'Burst')
 }
 
 {
