@@ -52,8 +52,13 @@ var ICONS = {
 
 var DERIVED_WINDOW_PROVIDERS = {
   cursor: {
-    "cursor-grok-bot": "grok-bot"
+    "cursor-grok-bot": "grok"
   }
+}
+
+// Title used when a Cursor extra window is shown on the host provider card.
+var DERIVED_WINDOW_TITLES = {
+  "cursor-grok-bot": "Grok bot"
 }
 
 var FALLBACK_ICON = ""
@@ -256,6 +261,7 @@ function splitWindows(provider, windows) {
       continue
     }
 
+    if (DERIVED_WINDOW_TITLES[window.id]) window.title = DERIVED_WINDOW_TITLES[window.id]
     if (!derivedWindows[derivedProvider]) derivedWindows[derivedProvider] = []
     derivedWindows[derivedProvider].push(window)
   }
@@ -406,15 +412,32 @@ function normalizeProviderRows(record, nowMs) {
   var derivedProviders = Object.keys(split.derived)
   for (var i = 0; i < derivedProviders.length; i++) {
     var derivedProvider = derivedProviders[i]
-    rows.push(usageRow(derivedProvider, source, providerIcon(derivedProvider), split.derived[derivedProvider]))
+    var derivedRow = usageRow(derivedProvider, source, providerIcon(derivedProvider), split.derived[derivedProvider])
+    derivedRow.derived = true
+    rows.push(derivedRow)
   }
 
   return rows
 }
 
+function sectionCount(info) {
+  return info && Array.isArray(info.sections) ? info.sections.length : 0
+}
+
 function mergeProviderRows(existing, incoming) {
   if (existing.kind === "usage" && incoming.kind === "usage") {
-    return usageRow(existing.provider, existing.source || incoming.source, existing.icon, existing.windows.concat(incoming.windows), existing.info)
+    var host = existing.derived && !incoming.derived ? incoming : existing
+    var extra = host === existing ? incoming : existing
+    var info = sectionCount(extra.info) > sectionCount(host.info) ? extra.info : host.info
+    var merged = usageRow(
+      host.provider,
+      host.source || extra.source,
+      host.icon || extra.icon,
+      host.windows.concat(extra.windows || []),
+      info
+    )
+    if (existing.derived && incoming.derived) merged.derived = true
+    return merged
   }
   if (existing.kind === "usage") return existing
   if (incoming.kind === "usage") return incoming

@@ -81,7 +81,7 @@ function grokBotExtra(usedPercent, resetsAt, title) {
       grokBotExtra(95, '2026-08-30T00:00:00Z', 'Grok Bot allowance')
     ]
   }))
-  assert.deepEqual(result.providers.map(row => row.provider), ['cursor', 'grok-bot'])
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor', 'grok'])
 
   const cursor = result.providers[0]
   assert.deepEqual(cursor.windows.map(window => window.id), [
@@ -94,12 +94,15 @@ function grokBotExtra(usedPercent, resetsAt, title) {
   assert.equal(cursor.remainingPercent, 20)
 
   const grokBot = result.providers[1]
-  assert.equal(grokBot.icon, 'grok-bot')
+  assert.equal(grokBot.icon, 'grok')
   assert.equal(grokBot.source, 'cursor-source')
   assert.equal(grokBot.windows.length, 1)
+  assert.equal(grokBot.windows[0].title, 'Grok bot')
+  assert.equal(grokBot.windows[0].remainingPercent, 5)
+  assert.equal(grokBot.windows[0].resetLabel, '5d 0h')
   assert.equal(grokBot.selectedWindow.kind, 'extra')
   assert.equal(grokBot.selectedWindow.id, 'cursor-grok-bot')
-  assert.equal(grokBot.selectedWindow.title, 'Grok Bot allowance')
+  assert.equal(grokBot.selectedWindow.title, 'Grok bot')
   assert.equal(grokBot.selectedWindow.usedPercent, 95)
   assert.equal(grokBot.selectedWindow.remainingPercent, 5)
   assert.equal(grokBot.selectedWindow.resetsAtMs, Date.parse('2026-08-30T00:00:00Z'))
@@ -148,9 +151,12 @@ function grokBotExtra(usedPercent, resetsAt, title) {
   const result = parse(record('cursor', {
     extraRateWindows: [grokBotExtra(70, '2026-08-30T00:00:00Z')]
   }))
-  assert.deepEqual(result.providers.map(row => row.provider), ['grok-bot'])
+  assert.deepEqual(result.providers.map(row => row.provider), ['grok'])
   assert.equal(result.providers[0].selectedWindow.id, 'cursor-grok-bot')
-  assert.equal(result.providers[0].icon, 'grok-bot')
+  assert.equal(result.providers[0].icon, 'grok')
+  assert.equal(result.providers[0].windows[0].title, 'Grok bot')
+  assert.equal(result.providers[0].windows[0].remainingPercent, 30)
+  assert.equal(result.providers[0].windows[0].resetLabel, '5d 0h')
 }
 
 {
@@ -172,9 +178,11 @@ function grokBotExtra(usedPercent, resetsAt, title) {
       }
     }
   ]))
-  assert.deepEqual(result.providers.map(row => row.provider), ['cursor', 'grok-bot'])
+  assert.deepEqual(result.providers.map(row => row.provider), ['cursor', 'grok'])
   assert.equal(result.providers[0].windows.length, 2)
-  assert.equal(result.providers[1].windows.length, 2)
+  assert.deepEqual(result.providers[1].windows.map(window => window.title), ['Grok bot', 'Grok bot'])
+  assert.deepEqual(result.providers[1].windows.map(window => window.remainingPercent), [40, 5])
+  assert.deepEqual(result.providers[1].windows.map(window => window.resetLabel), ['3d 0h', '4d 0h'])
   assert.equal(result.providers[1].source, 'account-1')
   assert.equal(result.providers[1].selectedWindow.usedPercent, 95)
 }
@@ -324,8 +332,65 @@ function grokBotExtra(usedPercent, resetsAt, title) {
     }
   }]))
   assert.equal(result.providers[0].info.displayName, 'Cursor')
-  assert.equal(result.providers[1].info.displayName, 'Grok Bot')
+  assert.equal(result.providers[1].info.displayName, 'Grok')
   assert.deepEqual(result.providers[1].info.sections, [])
+  assert.equal(result.providers[1].windows[0].title, 'Grok bot')
+  assert.equal(result.providers[1].windows[0].remainingPercent, 80)
+}
+
+function grokRecord(source) {
+  return {
+    provider: 'grok',
+    source: source,
+    rateWindowLabels: { primary: 'Weekly' },
+    usage: {
+      primary: { usedPercent: 26, windowMinutes: 10080, resetsAt: '2026-09-04T00:00:00Z' },
+      details: [{ title: 'Usage breakdown', rows: [{ label: 'Grok Build', value: '26%' }] }]
+    }
+  }
+}
+
+function cursorWithGrokBot(source) {
+  return {
+    provider: 'cursor',
+    source: source,
+    usage: {
+      primary: { usedPercent: 16, resetsAt: '2026-08-26T00:00:00Z' },
+      extraRateWindows: [grokBotExtra(6, '2026-09-05T03:00:00Z')]
+    }
+  }
+}
+
+function assertMergedGrok(result) {
+  const grok = result.providers.find(row => row.provider === 'grok')
+  const cursor = result.providers.find(row => row.provider === 'cursor')
+  assert.equal(result.providers.filter(row => row.provider === 'grok').length, 1)
+  assert.equal(grok.icon, 'grok')
+  assert.equal(grok.source, 'grok-cli-proxy')
+  assert.deepEqual(grok.windows.map(window => window.title), ['Weekly', 'Grok bot'])
+  assert.equal(grok.windows[0].remainingPercent, 74)
+  assert.equal(grok.windows[1].remainingPercent, 94)
+  assert.equal(grok.windows[1].resetLabel, '11d 3h')
+  assert.equal(grok.selectedWindow.kind, 'primary')
+  assert.equal(grok.remainingPercent, 74)
+  assert.deepEqual(grok.info.sections, [
+    { title: 'Usage breakdown', rows: [{ label: 'Grok Build', value: '26%' }] }
+  ])
+  assert.equal(cursor.windows.some(window => window.id === 'cursor-grok-bot'), false)
+}
+
+{
+  const cursorFirst = parse(JSON.stringify([
+    cursorWithGrokBot('cursor-source'),
+    grokRecord('grok-cli-proxy')
+  ]))
+  assertMergedGrok(cursorFirst)
+
+  const grokFirst = parse(JSON.stringify([
+    grokRecord('grok-cli-proxy'),
+    cursorWithGrokBot('cursor-source')
+  ]))
+  assertMergedGrok(grokFirst)
 }
 
 {
