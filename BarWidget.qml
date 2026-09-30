@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
 
@@ -236,19 +237,92 @@ Panel {
             id: refreshButton
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            iconText: String.fromCodePoint(0xf0450)
             foreground: root.panelForeground
             fontFamily: root.panelFontFamily
             enabled: !root.refreshing
             onClicked: root.refresh()
 
-            RotationAnimation on rotation {
-              running: root.refreshing
-              loops: Animation.Infinite
-              from: 0
-              to: 360
-              duration: 900
-              onRunningChanged: if (!running) refreshButton.rotation = 0
+            // Drawn instead of using a font glyph: icon glyphs are not symmetric
+            // around their box, so they wobble when rotated. The two-arrow shape is
+            // point-symmetric, so its silhouette stays centered at every angle.
+            Shape {
+              id: refreshIcon
+              readonly property real iconSize: 2 * Math.round(refreshButton.fontSize / 2)
+              readonly property real center: iconSize / 2
+              readonly property real lineWidth: Math.max(1.25, iconSize / 9)
+              readonly property real head: lineWidth * 1.35
+              readonly property real radius: center - head
+              readonly property real sweep: 125
+              readonly property real startA: -90 + (180 - sweep) / 2
+              readonly property color strokeColor: refreshButton.enabled
+                ? (refreshButton._hot ? refreshButton.hoverColor : refreshButton.foreground)
+                : Qt.darker(refreshButton.foreground, 2.0)
+
+              function arrowHead(endDegrees) {
+                const a = endDegrees * Math.PI / 180
+                const ex = center + radius * Math.cos(a)
+                const ey = center + radius * Math.sin(a)
+                const tx = -Math.sin(a), ty = Math.cos(a)
+                const nx = Math.cos(a), ny = Math.sin(a)
+                return [
+                  Qt.point(ex + nx * head, ey + ny * head),
+                  Qt.point(ex + tx * head * 1.3, ey + ty * head * 1.3),
+                  Qt.point(ex - nx * head, ey - ny * head),
+                  Qt.point(ex + nx * head, ey + ny * head)
+                ]
+              }
+
+              width: iconSize
+              height: iconSize
+              anchors.centerIn: parent
+              preferredRendererType: Shape.CurveRenderer
+
+              ShapePath {
+                strokeColor: refreshIcon.strokeColor
+                strokeWidth: refreshIcon.lineWidth
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                PathAngleArc {
+                  centerX: refreshIcon.center; centerY: refreshIcon.center
+                  radiusX: refreshIcon.radius; radiusY: refreshIcon.radius
+                  startAngle: refreshIcon.startA
+                  sweepAngle: refreshIcon.sweep
+                }
+              }
+
+              ShapePath {
+                strokeColor: refreshIcon.strokeColor
+                strokeWidth: refreshIcon.lineWidth
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                PathAngleArc {
+                  centerX: refreshIcon.center; centerY: refreshIcon.center
+                  radiusX: refreshIcon.radius; radiusY: refreshIcon.radius
+                  startAngle: refreshIcon.startA + 180
+                  sweepAngle: refreshIcon.sweep
+                }
+              }
+
+              ShapePath {
+                strokeColor: "transparent"
+                fillColor: refreshIcon.strokeColor
+                PathPolyline { path: refreshIcon.arrowHead(refreshIcon.startA + refreshIcon.sweep) }
+              }
+
+              ShapePath {
+                strokeColor: "transparent"
+                fillColor: refreshIcon.strokeColor
+                PathPolyline { path: refreshIcon.arrowHead(refreshIcon.startA + refreshIcon.sweep + 180) }
+              }
+
+              RotationAnimation on rotation {
+                running: root.refreshing
+                loops: Animation.Infinite
+                from: 0
+                to: 360
+                duration: 900
+                onRunningChanged: if (!running) refreshIcon.rotation = 0
+              }
             }
           }
         }
