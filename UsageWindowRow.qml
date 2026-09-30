@@ -95,6 +95,7 @@ Column {
 
   Text {
     textFormat: Text.PlainText
+    visible: text !== ""
     text: root.usageWindow ? UsageModel.formatResetIn(root.usageWindow.resetsAtMs, root.nowMs) : ""
     color: root.dim
     font.family: root.fontFamily

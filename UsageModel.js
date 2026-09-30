@@ -149,6 +149,7 @@ function formatResetDuration(duration) {
 }
 
 function formatResetIn(resetsAtMs, nowMs) {
+  if (typeof resetsAtMs !== "number" || !isFinite(resetsAtMs)) return ""
   var totalMinutes = Math.floor(Math.max(0, resetsAtMs - nowMs) / MINUTE_MS)
   if (totalMinutes <= 0) return "Resets now"
   var days = Math.floor(totalMinutes / 1440)
@@ -181,14 +182,23 @@ function normalizePace(rawPace) {
 function normalizeWindow(rawWindow, kind, id, title, nowMs, rawPace) {
   if (!isObject(rawWindow)) return null
   if (typeof rawWindow.usedPercent !== "number" || !isFinite(rawWindow.usedPercent)) return null
-  if (typeof rawWindow.resetsAt !== "string") return null
 
-  var resetsAtMs = Date.parse(rawWindow.resetsAt)
-  if (!isFinite(resetsAtMs)) return null
+  // CodexBar leaves resetsAt null until the window starts. An unused Claude
+  // session is 0% used with no reset, and still belongs on the meter at 100%.
+  var resetsAtMs = null
+  var resetDays = null
+  var resetLabel = ""
+  if (rawWindow.resetsAt != null) {
+    if (typeof rawWindow.resetsAt !== "string") return null
+    resetsAtMs = Date.parse(rawWindow.resetsAt)
+    if (!isFinite(resetsAtMs)) return null
+    var duration = resetDuration(resetsAtMs, nowMs)
+    resetDays = duration.days
+    resetLabel = formatResetDuration(duration)
+  }
 
   var usedPercent = rawWindow.usedPercent
   var remainingPercent = clamp(100 - usedPercent, 0, 100)
-  var duration = resetDuration(resetsAtMs, nowMs)
   var windowMinutes = typeof rawWindow.windowMinutes === "number" && isFinite(rawWindow.windowMinutes)
     ? rawWindow.windowMinutes
     : null
@@ -201,8 +211,8 @@ function normalizeWindow(rawWindow, kind, id, title, nowMs, rawPace) {
     usedPercent: usedPercent,
     remainingPercent: remainingPercent,
     resetsAtMs: resetsAtMs,
-    resetDays: duration.days,
-    resetLabel: formatResetDuration(duration)
+    resetDays: resetDays,
+    resetLabel: resetLabel
   }
 }
 
@@ -271,13 +281,23 @@ function splitWindows(provider, windows) {
   }
 }
 
+function hasReset(resetsAtMs) {
+  return typeof resetsAtMs === "number" && isFinite(resetsAtMs)
+}
+
+function resetsSooner(candidateMs, selectedMs) {
+  if (!hasReset(candidateMs)) return false
+  if (!hasReset(selectedMs)) return true
+  return candidateMs < selectedMs
+}
+
 function selectWindow(windows) {
   if (!Array.isArray(windows) || windows.length === 0) return null
   var selected = windows[0]
   for (var i = 1; i < windows.length; i++) {
     var candidate = windows[i]
     if (candidate.remainingPercent < selected.remainingPercent ||
-        (candidate.remainingPercent === selected.remainingPercent && candidate.resetsAtMs < selected.resetsAtMs)) {
+        (candidate.remainingPercent === selected.remainingPercent && resetsSooner(candidate.resetsAtMs, selected.resetsAtMs))) {
       selected = candidate
     }
   }

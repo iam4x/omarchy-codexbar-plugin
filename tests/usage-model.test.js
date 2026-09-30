@@ -432,6 +432,58 @@ function assertMergedGrok(result) {
 }
 
 {
+  const result = parse(JSON.stringify([{
+    provider: 'claude',
+    rateWindowLabels: { primary: 'Session', secondary: 'Weekly' },
+    usage: {
+      primary: { usedPercent: 0, windowMinutes: 300, resetsAt: null },
+      secondary: { usedPercent: 34, windowMinutes: 10080, resetsAt: '2026-10-03T04:00:00Z' },
+      extraRateWindows: [{
+        id: 'claude-weekly-scoped-fable',
+        title: 'Fable only',
+        window: { usedPercent: 10, windowMinutes: 10080, resetsAt: '2026-10-03T04:00:00Z' }
+      }]
+    }
+  }]))
+  const windows = result.providers[0].windows
+  assert.deepEqual(windows.map(window => window.title), ['5h', 'Weekly', 'Fable only'])
+  assert.equal(windows[0].usedPercent, 0)
+  assert.equal(windows[0].remainingPercent, 100)
+  assert.equal(windows[0].resetsAtMs, null)
+  assert.equal(windows[0].resetLabel, '')
+  assert.equal(result.providers[0].selectedWindow.title, 'Weekly')
+  assert.equal(result.providers[0].remainingLabel, '66%')
+}
+
+{
+  const result = parse(record('claude', {
+    primary: { usedPercent: 0, windowMinutes: 300 }
+  }))
+  const window = result.providers[0].windows[0]
+  assert.equal(window.title, '5h')
+  assert.equal(window.remainingPercent, 100)
+  assert.equal(result.providers[0].remainingLabel, '100%')
+  assert.equal(result.providers[0].resetLabel, '')
+  assert.equal(UsageModel.formatResetIn(window.resetsAtMs, now), '')
+}
+
+{
+  const result = parse(record('claude', {
+    primary: { usedPercent: 40, windowMinutes: 300 },
+    secondary: { usedPercent: 40, windowMinutes: 10080, resetsAt: '2026-08-31T00:00:00Z' }
+  }))
+  assert.equal(result.providers[0].selectedWindow.title, 'Weekly')
+}
+
+{
+  const result = parse(record('claude', {
+    primary: { usedPercent: 0, windowMinutes: 300, resetsAt: 'not-a-date' },
+    secondary: { usedPercent: 34, windowMinutes: 10080, resetsAt: '2026-10-03T04:00:00Z' }
+  }))
+  assert.deepEqual(result.providers[0].windows.map(window => window.title), ['Weekly'])
+}
+
+{
   assert.equal(UsageModel.displayName('zai'), 'Z.ai')
   assert.equal(UsageModel.displayName('new-provider_name'), 'New Provider Name')
   assert.equal(UsageModel.formatResetIn(now - 1000, now), 'Resets now')
